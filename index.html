@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Parkour Dash - FIXED DASH!</title>
+    <title>Parkour EVIG - Shops & Power-ups!</title>
     <style>
         * {
             user-select: none;
@@ -197,13 +197,69 @@
             100% { opacity: 0.7; transform: translateX(-50%) scale(1); }
         }
 
+        .powerup-status {
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #9b59b6dd;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            z-index: 15;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        /* Shop GUI - vises KUN når man står på en lilla søyle */
+        .shop-overlay {
+            position: fixed;
+            bottom: 200px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #000000cc;
+            backdrop-filter: blur(15px);
+            padding: 12px 20px;
+            border-radius: 30px;
+            display: flex;
+            gap: 15px;
+            z-index: 25;
+            border: 2px solid #9b59b6;
+            pointer-events: auto;
+        }
+
+        .shop-item {
+            background: #2c3e66;
+            padding: 8px 12px;
+            border-radius: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.1s;
+            color: white;
+            font-weight: bold;
+        }
+
+        .shop-item:active {
+            transform: scale(0.95);
+        }
+
+        .shop-item.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
         @media (max-width: 700px) {
             .joy-area { width: 110px; height: 110px; bottom: 25px; left: 15px; }
             .joystick-thumb { width: 45px; height: 45px; }
             .jump-btn { width: 70px; height: 70px; bottom: 30px; right: 20px; font-size: 1.6rem; }
             .dash-btn { width: 60px; height: 60px; bottom: 35px; right: 105px; font-size: 1.2rem; }
             .scoreboard { font-size: 1.2rem; padding: 6px 15px; gap: 12px; }
-            .warning-message { font-size: 0.7rem; top: 80px; white-space: nowrap; }
+            .warning-message { font-size: 0.7rem; top: 80px; }
+            .powerup-status { top: 80px; font-size: 0.7rem; }
+            .shop-overlay { bottom: 160px; padding: 8px 12px; gap: 8px; }
+            .shop-item { padding: 5px 8px; font-size: 0.7rem; }
         }
     </style>
 </head>
@@ -219,6 +275,12 @@
 <button class="jump-btn" id="jumpButton">⬆️ HOPP</button>
 <button class="dash-btn" id="dashButton">⚡ DASH</button>
 <div id="warningMessage" class="warning-message" style="display: none;">⚠️ BAKKEN FORSVINNER VED 60 POENG! ⚠️</div>
+<div id="powerupStatus" class="powerup-status" style="display: none;"></div>
+<div id="shopOverlay" class="shop-overlay" style="display: none;">
+    <div class="shop-item" data-item="fly">🕊️ FLY 5s<br>💰320</div>
+    <div class="shop-item" data-item="slowfall">🍃 SLOW FALL<br>💰130</div>
+    <div class="shop-item" data-item="launch">🚀 LAUNCH<br>💰270</div>
+</div>
 
 <div id="joyArea" class="joy-area">
     <div class="joystick-base"></div>
@@ -230,6 +292,7 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const warningMsg = document.getElementById('warningMessage');
+        const shopOverlay = document.getElementById('shopOverlay');
 
         // Spill status
         let gameRunning = true;
@@ -237,6 +300,15 @@
         let coins = 0;
         let cameraX = 0;
         let groundRemoved = false;
+        let nearShop = false;
+        let currentShopPos = null;
+        
+        // Power-ups
+        let activePowerup = null;
+        let powerupTimer = 0;
+        let isFlying = false;
+        let isSlowFalling = false;
+        let currentGravity = 0.7;
         
         // Dash
         let dashCooldown = 0;
@@ -246,10 +318,16 @@
         let isDashing = false;
         let dashParticles = [];
         
-        // Fiender
+        // Launch
+        let isLaunching = false;
+        let launchTimer = 0;
+        
+        // Fiender, kuler, mynter, bygninger, shops
         let enemies = [];
+        let bullets = [];
         let coinsList = [];
         let buildings = [];
+        let shops = [];
         let lastEnemySpawnX = 0;
         
         // Spiller
@@ -268,19 +346,14 @@
         const GRAVITY = 0.7;
         const JUMP_POWER = -11;
         
-        // ----- TILFELDIG GENERASJON -----
-        function generateRandomWorld() {
-            buildings = [];
-            coinsList = [];
-            enemies = [];
-            
-            buildings.push({ x: -200, y: 620, width: 5000, height: 20, type: 'ground', id: 'ground' });
-            
-            let numBuildings = 40 + Math.floor(Math.random() * 20);
-            let lastX = 80;
-            
-            for(let i = 0; i < numBuildings; i++) {
-                let spacing = 90 + Math.random() * 130;
+        // Evig generering
+        let lastGeneratedX = 500;
+        
+        // ----- TILFELDIG GENERASJON (evig) -----
+        function generateMoreWorld() {
+            let lastX = lastGeneratedX;
+            for(let i = 0; i < 5; i++) {
+                let spacing = 100 + Math.random() * 140;
                 let x = lastX + spacing;
                 let width = 65 + Math.random() * 75;
                 let y = 470 + Math.random() * 140;
@@ -304,7 +377,7 @@
                     color: '#3a2a2a'
                 });
                 
-                if(Math.random() > 0.55 && x > 100) {
+                if(Math.random() > 0.55) {
                     coinsList.push({
                         x: x + width/2 - 8,
                         y: y - 18,
@@ -314,43 +387,179 @@
                     });
                 }
                 
+                // Shop (8% sjanse)
+                if(Math.random() < 0.08 && shops.length < 4) {
+                    shops.push({
+                        x: x + width/2 - 15,
+                        y: y - 45,
+                        width: 30,
+                        height: 40,
+                        purchased: false,
+                        type: 'shop'
+                    });
+                }
+                
                 lastX = x + width;
             }
+            lastGeneratedX = lastX;
+        }
+        
+        function generateStartWorld() {
+            buildings = [];
+            coinsList = [];
+            enemies = [];
+            shops = [];
             
-            for(let i = 0; i < 20; i++) {
-                coinsList.push({
-                    x: 200 + Math.random() * 4200,
-                    y: 440 + Math.random() * 160,
-                    width: 14,
-                    height: 14,
-                    collected: false
+            buildings.push({ x: -200, y: 620, width: 5000, height: 20, type: 'ground', id: 'ground' });
+            
+            let lastX = 80;
+            for(let i = 0; i < 15; i++) {
+                let spacing = 90 + Math.random() * 130;
+                let x = lastX + spacing;
+                let width = 65 + Math.random() * 75;
+                let y = 470 + Math.random() * 140;
+                y = Math.min(y, 590);
+                
+                buildings.push({ x: x, y: y, width: width, height: 12, type: 'roof', color: `hsl(${30 + Math.random() * 40}, 55%, 48%)` });
+                buildings.push({ x: x + 5, y: y + 12, width: width - 10, height: 620 - y - 12, type: 'buildingBody', color: '#3a2a2a' });
+                
+                if(Math.random() > 0.55) {
+                    coinsList.push({ x: x + width/2 - 8, y: y - 18, width: 16, height: 16, collected: false });
+                }
+                
+                if(Math.random() < 0.08 && shops.length < 2) {
+                    shops.push({ x: x + width/2 - 15, y: y - 45, width: 30, height: 40, purchased: false, type: 'shop' });
+                }
+                
+                lastX = x + width;
+            }
+            lastGeneratedX = lastX;
+        }
+        
+        // Skyte-fiender (ved 300+ poeng)
+        function spawnShootingEnemy() {
+            if(score >= 300 && enemies.length < 5 && Math.random() < 0.008) {
+                let spawnX = player.x + 400 + Math.random() * 300;
+                let targetY = 550;
+                for(let b of buildings) {
+                    if(b.type === 'roof' && Math.abs(b.x - spawnX) < 100) {
+                        targetY = b.y - 28;
+                        break;
+                    }
+                }
+                enemies.push({
+                    x: spawnX,
+                    y: targetY,
+                    width: 30,
+                    height: 30,
+                    type: 'shooter',
+                    shootTimer: 0
                 });
             }
         }
         
-        function spawnEnemiesIfNeeded() {
-            if(score >= 100 && gameRunning && enemies.length < 4) {
-                if(player.x - lastEnemySpawnX > 500 && Math.random() < 0.015) {
-                    let spawnX = player.x + 350 + Math.random() * 250;
-                    let targetY = 550;
-                    for(let b of buildings) {
-                        if(b.type === 'roof' && Math.abs(b.x - spawnX) < 100) {
-                            targetY = b.y - 28;
-                            break;
+        function handleShooters() {
+            for(let e of enemies) {
+                if(e.type === 'shooter') {
+                    e.shootTimer = (e.shootTimer || 0) + 1;
+                    if(e.shootTimer > 60) {
+                        e.shootTimer = 0;
+                        let dx = player.x - e.x;
+                        let dy = player.y - e.y;
+                        let len = Math.hypot(dx, dy);
+                        if(len < 500) {
+                            bullets.push({
+                                x: e.x + 15,
+                                y: e.y + 15,
+                                vx: (dx / len) * 5,
+                                vy: (dy / len) * 5,
+                                radius: 5
+                            });
                         }
                     }
-                    enemies.push({
-                        x: spawnX,
-                        y: targetY,
-                        width: 30,
-                        height: 30,
-                        type: 'slime'
-                    });
-                    lastEnemySpawnX = player.x;
                 }
             }
         }
         
+        // Power-ups
+        function activatePowerup(type) {
+            if(type === 'fly') {
+                isFlying = true;
+                activePowerup = '🕊️ FLYVING';
+                powerupTimer = 300;
+                player.vy = -5;
+            } else if(type === 'slowfall') {
+                isSlowFalling = true;
+                activePowerup = '🍃 SLOW FALL';
+                powerupTimer = 2100;
+                currentGravity = 0.25;
+            } else if(type === 'launch') {
+                isLaunching = true;
+                activePowerup = '🚀 LAUNCH';
+                launchTimer = 20;
+                let launchDir = (Math.abs(joyX) > 0.2) ? Math.sign(joyX) : 1;
+                player.vx = launchDir * 18;
+                player.vy = -14;
+            }
+            document.getElementById('powerupStatus').style.display = 'block';
+            document.getElementById('powerupStatus').innerHTML = activePowerup;
+        }
+        
+        function updatePowerups() {
+            if(powerupTimer > 0) {
+                powerupTimer--;
+                if(powerupTimer <= 0) {
+                    if(isFlying) isFlying = false;
+                    if(isSlowFalling) {
+                        isSlowFalling = false;
+                        currentGravity = 0.7;
+                    }
+                    activePowerup = null;
+                    document.getElementById('powerupStatus').style.display = 'none';
+                } else {
+                    let seconds = (powerupTimer / 60).toFixed(1);
+                    document.getElementById('powerupStatus').innerHTML = `${activePowerup} ⏱️ ${seconds}s`;
+                }
+            }
+            
+            if(isLaunching) {
+                if(launchTimer > 0) {
+                    launchTimer--;
+                    player.vx *= 0.96;
+                    player.vy += 0.3;
+                    if(launchTimer <= 0) {
+                        isLaunching = false;
+                    }
+                }
+            }
+            
+            if(isFlying) {
+                player.vy *= 0.98;
+                if(player.vy < -3) player.vy = -3;
+                player.grounded = false;
+            }
+        }
+        
+        // Sjekk om player er nær shop
+        function checkNearShop() {
+            let wasNear = nearShop;
+            nearShop = false;
+            for(let s of shops) {
+                if(Math.abs(player.x - s.x) < 80 && Math.abs(player.y - s.y) < 60) {
+                    nearShop = true;
+                    currentShopPos = s;
+                    break;
+                }
+            }
+            
+            if(nearShop && !wasNear) {
+                shopOverlay.style.display = 'flex';
+            } else if(!nearShop && wasNear) {
+                shopOverlay.style.display = 'none';
+            }
+        }
+        
+        // Fjern bakken ved 60 poeng (warning ved 50)
         function checkGroundRemoval() {
             if(!groundRemoved && score >= 60) {
                 groundRemoved = true;
@@ -374,14 +583,14 @@
                 document.body.appendChild(msg);
                 setTimeout(() => msg.remove(), 2000);
                 if(navigator.vibrate) navigator.vibrate(200);
-            } else if(!groundRemoved && score >= 55) {
+            } else if(!groundRemoved && score >= 50) {
                 warningMsg.style.display = 'block';
-            } else if(!groundRemoved && score < 55) {
+            } else if(!groundRemoved && score < 50) {
                 warningMsg.style.display = 'none';
             }
         }
         
-        // ----- JOYSTICK (forenklet og stabil) -----
+        // ----- JOYSTICK -----
         const joyArea = document.getElementById('joyArea');
         const joyThumb = document.getElementById('joyThumb');
         let activeTouchId = null;
@@ -454,7 +663,7 @@
         
         function performJump() {
             if(!gameRunning) return;
-            if(player.grounded) {
+            if((player.grounded || isFlying) && !isLaunching) {
                 player.vy = JUMP_POWER;
                 player.grounded = false;
                 if(navigator.vibrate) navigator.vibrate(40);
@@ -463,32 +672,17 @@
         
         function performDash() {
             if(!gameRunning) return;
-            if(dashCooldown <= 0 && canDash) {
-                // Finn dash-retning basert på joystick
-                let dashAngle = 0;
+            if(dashCooldown <= 0 && canDash && !isLaunching) {
                 let dashPowerX = DASH_FORCE;
                 let dashPowerY = 0;
-                
                 if(Math.abs(joyX) > 0.2 || Math.abs(joyY) > 0.2) {
-                    // Normaliser retningen
                     let len = Math.hypot(joyX, joyY);
-                    let normX = joyX / len;
-                    let normY = joyY / len;
-                    dashPowerX = normX * DASH_FORCE;
-                    dashPowerY = normY * DASH_FORCE;
-                    dashAngle = Math.atan2(normY, normX);
-                } else {
-                    // Standard mot høyre
-                    dashPowerX = DASH_FORCE;
-                    dashPowerY = 0;
+                    dashPowerX = (joyX / len) * DASH_FORCE;
+                    dashPowerY = (joyY / len) * DASH_FORCE;
                 }
-                
-                // Anvend dash
                 player.vx = dashPowerX;
                 player.vy = dashPowerY * 0.9;
                 isDashing = true;
-                
-                // Lag partikler for dash-retning (riktig vei!)
                 for(let i = 0; i < 12; i++) {
                     dashParticles.push({
                         x: player.x,
@@ -498,12 +692,10 @@
                         life: 0.6
                     });
                 }
-                
                 dashCooldown = DASH_COOLDOWN_MAX;
                 canDash = false;
                 if(navigator.vibrate) navigator.vibrate(60);
                 dashButton.classList.add('cooldown');
-                
                 setTimeout(() => {
                     if(dashCooldown <= 0) dashButton.classList.remove('cooldown');
                 }, 100);
@@ -515,8 +707,47 @@
         dashButton.addEventListener('click', (e) => { e.preventDefault(); performDash(); });
         dashButton.addEventListener('touchstart', (e) => { e.preventDefault(); performDash(); });
         
-        // ----- OPPDATERINGER -----
-        function handleCollisionsAndMovement() {
+        // Shop kjøp
+        document.querySelectorAll('.shop-item').forEach(item => {
+            item.addEventListener('click', () => {
+                if(!gameRunning) return;
+                if(!nearShop) return;
+                let type = item.dataset.item;
+                let cost = 0;
+                if(type === 'fly') cost = 320;
+                else if(type === 'slowfall') cost = 130;
+                else if(type === 'launch') cost = 270;
+                
+                if(coins >= cost && !activePowerup) {
+                    coins -= cost;
+                    activatePowerup(type);
+                    document.getElementById('coinValue').innerText = coins;
+                    shopOverlay.style.display = 'none';
+                    nearShop = false;
+                }
+            });
+            item.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if(!gameRunning) return;
+                if(!nearShop) return;
+                let type = item.dataset.item;
+                let cost = 0;
+                if(type === 'fly') cost = 320;
+                else if(type === 'slowfall') cost = 130;
+                else if(type === 'launch') cost = 270;
+                
+                if(coins >= cost && !activePowerup) {
+                    coins -= cost;
+                    activatePowerup(type);
+                    document.getElementById('coinValue').innerText = coins;
+                    shopOverlay.style.display = 'none';
+                    nearShop = false;
+                }
+            });
+        });
+        
+        // ----- KOLLISJONER -----
+        function handleCollisions() {
             if(dashCooldown > 0) {
                 dashCooldown--;
                 if(dashCooldown <= 0) {
@@ -524,24 +755,18 @@
                     dashButton.classList.remove('cooldown');
                     isDashing = false;
                 }
-            } else {
-                isDashing = false;
             }
             
-            // Normal bevegelse (kun når ikke dashing)
             if(!isDashing || dashCooldown < DASH_COOLDOWN_MAX - 15) {
                 let move = joyX * 5.5;
-                player.vx = move;
+                if(!isLaunching) player.vx = move;
             }
             
             player.x += player.vx;
-            
             if(player.x < 50) player.x = 50;
-            if(player.x > 4800) player.x = 4800;
             
-            player.vy += GRAVITY;
+            player.vy += currentGravity;
             player.y += player.vy;
-            
             player.grounded = false;
             
             for(let b of buildings) {
@@ -552,6 +777,7 @@
                         player.y = b.y - player.height;
                         player.vy = 0;
                         player.grounded = true;
+                        if(isFlying) isFlying = false;
                     }
                     else if(player.vy < 0 && player.y >= b.y + b.height) {
                         player.y = b.y + b.height;
@@ -573,6 +799,7 @@
                     coin.collected = true;
                     coins++;
                     if(navigator.vibrate) navigator.vibrate(20);
+                    document.getElementById('coinValue').innerText = coins;
                 }
             }
             
@@ -581,20 +808,37 @@
                 let e = enemies[i];
                 if(player.x < e.x + e.width && player.x + player.width > e.x &&
                    player.y < e.y + e.height && player.y + player.height > e.y) {
-                    
                     if(player.vy > 0 && player.y + player.height - e.y < 18) {
                         enemies.splice(i,1);
                         player.vy = -9;
                         score += 15;
                         if(navigator.vibrate) navigator.vibrate(50);
                         i--;
-                    } else {
+                    } else if(!isFlying) {
                         gameRunning = false;
                     }
                 }
             }
             
-            // Oppdater partikler
+            // Kuler
+            for(let i = 0; i < bullets.length; i++) {
+                let b = bullets[i];
+                b.x += b.vx;
+                b.y += b.vy;
+                if(b.x < 0 || b.x > 5000 || b.y < 0 || b.y > 800) {
+                    bullets.splice(i,1);
+                    i--;
+                    continue;
+                }
+                if(player.x < b.x + b.radius && player.x + player.width > b.x - b.radius &&
+                   player.y < b.y + b.radius && player.y + player.height > b.y - b.radius) {
+                    if(!isFlying) gameRunning = false;
+                    bullets.splice(i,1);
+                    break;
+                }
+            }
+            
+            // Partikler
             for(let i = 0; i < dashParticles.length; i++) {
                 dashParticles[i].x += dashParticles[i].vx;
                 dashParticles[i].y += dashParticles[i].vy;
@@ -606,19 +850,30 @@
             }
             
             let targetCam = player.x - canvas.width/2 + player.width/2;
-            targetCam = Math.min(Math.max(targetCam, 0), 4800 - canvas.width);
+            targetCam = Math.min(Math.max(targetCam, 0), lastGeneratedX + 500);
             cameraX = targetCam;
+            
+            // Evig generering
+            if(player.x > lastGeneratedX - 800) {
+                generateMoreWorld();
+            }
+            
+            // Sjekk shop
+            checkNearShop();
         }
         
-        function updateScore() {
+        function updateGame() {
             if(gameRunning) {
                 let distanceProgress = (player.x - 100) / 28;
                 score = Math.max(score, Math.floor(distanceProgress) + coins);
                 document.getElementById('scoreValue').innerText = Math.floor(score);
                 document.getElementById('coinValue').innerText = coins;
                 
-                spawnEnemiesIfNeeded();
                 checkGroundRemoval();
+                spawnShootingEnemy();
+                handleShooters();
+                updatePowerups();
+                handleCollisions();
             }
         }
         
@@ -635,12 +890,24 @@
             dashCooldown = 0;
             canDash = true;
             isDashing = false;
+            isFlying = false;
+            isSlowFalling = false;
+            isLaunching = false;
+            currentGravity = 0.7;
+            activePowerup = null;
+            powerupTimer = 0;
             cameraX = 0;
             enemies = [];
+            bullets = [];
             dashParticles = [];
-            lastEnemySpawnX = 0;
-            generateRandomWorld();
+            nearShop = false;
+            shopOverlay.style.display = 'none';
+            
+            generateStartWorld();
+            
             dashButton.classList.remove('cooldown');
+            document.getElementById('powerupStatus').style.display = 'none';
+            document.getElementById('coinValue').innerText = coins;
             warningMsg.style.display = 'none';
         }
         
@@ -685,6 +952,22 @@
                 }
             }
             
+            // Shops (lilla søyler)
+            for(let s of shops) {
+                let screenX = s.x - cameraX;
+                ctx.fillStyle = '#9b59b6';
+                ctx.fillRect(screenX, s.y, s.width, s.height);
+                ctx.fillStyle = '#ffd700';
+                ctx.font = '20px monospace';
+                ctx.fillText('🏪', screenX+8, s.y+28);
+                // Glow effekt
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#9b59b6';
+                ctx.fillStyle = '#ddaaff';
+                ctx.fillRect(screenX+2, s.y-3, 26, 5);
+                ctx.shadowBlur = 0;
+            }
+            
             for(let coin of coinsList) {
                 if(!coin.collected) {
                     let screenX = coin.x - cameraX;
@@ -706,10 +989,17 @@
             
             for(let e of enemies) {
                 let screenX = e.x - cameraX;
-                ctx.fillStyle = '#8B0000';
-                ctx.fillRect(screenX, e.y, e.width, e.height);
-                ctx.fillStyle = '#FF4444';
-                ctx.fillRect(screenX+4, e.y-8, 22, 10);
+                if(e.type === 'shooter') {
+                    ctx.fillStyle = '#8B008B';
+                    ctx.fillRect(screenX, e.y, e.width, e.height);
+                    ctx.fillStyle = '#FF44FF';
+                    ctx.fillRect(screenX+4, e.y-8, 22, 10);
+                } else {
+                    ctx.fillStyle = '#8B0000';
+                    ctx.fillRect(screenX, e.y, e.width, e.height);
+                    ctx.fillStyle = '#FF4444';
+                    ctx.fillRect(screenX+4, e.y-8, 22, 10);
+                }
                 ctx.fillStyle = 'white';
                 ctx.fillRect(screenX+7, e.y+6, 6, 6);
                 ctx.fillRect(screenX+17, e.y+6, 6, 6);
@@ -717,7 +1007,14 @@
                 ctx.fillRect(screenX+11, e.y+16, 8, 5);
             }
             
-            // Dash partikler (viser retningen)
+            for(let b of bullets) {
+                let screenX = b.x - cameraX;
+                ctx.fillStyle = '#ff4444';
+                ctx.beginPath();
+                ctx.arc(screenX, b.y, b.radius, 0, Math.PI*2);
+                ctx.fill();
+            }
+            
             for(let p of dashParticles) {
                 let screenX = p.x - cameraX;
                 ctx.fillStyle = `rgba(78, 205, 196, ${p.life})`;
@@ -737,11 +1034,15 @@
             ctx.fillStyle = '#2c3e2f';
             ctx.fillRect(playerScreenX+6, player.y+22, 16, 8);
             
-            // Dash streak i riktig retning!
+            if(isFlying) {
+                ctx.fillStyle = '#9b59b6aa';
+                ctx.fillRect(playerScreenX-5, player.y+10, 38, 12);
+            }
+            
+            // Dash streak
             if(isDashing && dashCooldown > DASH_COOLDOWN_MAX - 8) {
                 ctx.strokeStyle = '#4ecdc4';
                 ctx.lineWidth = 5;
-                // Finn retningen basert på velocity
                 let dirX = Math.sign(player.vx) || 1;
                 let dirY = Math.sign(player.vy) || 0;
                 if(dirX === 0 && dirY === 0) dirX = 1;
@@ -775,28 +1076,19 @@
             
             if(dashCooldown > 0) {
                 ctx.fillStyle = '#4ecdc4aa';
-                ctx.font = 'bold 14px monospace';
+                ctx.font = 'bold 12px monospace';
                 let secLeft = (dashCooldown / 60).toFixed(1);
-                ctx.fillText(`⚡ ${secLeft}s`, canvas.width-65, 75);
-            }
-        }
-        
-        function update() {
-            if(gameRunning) {
-                handleCollisionsAndMovement();
-                updateScore();
+                ctx.fillText(`⚡ ${secLeft}s`, canvas.width-55, 70);
             }
         }
         
         function gameLoop() {
-            update();
+            updateGame();
             draw();
             requestAnimationFrame(gameLoop);
         }
         
-        generateRandomWorld();
-        player.y = 540;
-        player.grounded = true;
+        restartGame();
         gameLoop();
     })();
 </script>
