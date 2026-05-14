@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Parkour Roofrunner - Hopp på bygninger!</title>
+    <style>
+        * {
+            user-select: none;
+            touch-action: none;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(145deg, #0a0f1e 0%, #0a1620 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            touch-action: none;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+
+        .game-container {
+            position: relative;
+            background: #1a1a2e;
+            border-radius: 28px;
+            padding: 8px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.6);
+        }
+
+        canvas {
+            display: block;
+            margin: 0 auto;
+            border-radius: 20px;
+            box-shadow: 0 0 0 3px #ffd966, 0 10px 25px black;
+            cursor: pointer;
+        }
+
+        /* Joystick - venstre */
+        .joy-area {
+            position: fixed;
+            bottom: 30px;
+            left: 25px;
+            width: 130px;
+            height: 130px;
+            border-radius: 999px;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 0 3px rgba(255,215,0,0.6);
+            touch-action: none;
+            z-index: 20;
+        }
+
+        .joystick-base {
+            position: absolute;
+            width: 130px;
+            height: 130px;
+            border-radius: 999px;
+            background: rgba(40,40,60,0.8);
+        }
+
+        .joystick-thumb {
+            position: absolute;
+            width: 55px;
+            height: 55px;
+            background: radial-gradient(circle at 30% 30%, #ffcc44, #ff9900);
+            border-radius: 999px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 4px 12px black;
+            pointer-events: none;
+        }
+
+        /* HOPPEKNAPP - høyre side! */
+        .jump-btn {
+            position: fixed;
+            bottom: 40px;
+            right: 30px;
+            width: 85px;
+            height: 85px;
+            border-radius: 999px;
+            background: radial-gradient(circle at 35% 35%, #ff6b6b, #cc3333);
+            border: none;
+            box-shadow: 0 8px 0 #8b0000, 0 5px 20px rgba(0,0,0,0.5);
+            font-size: 2rem;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 0 #5a0000;
+            cursor: pointer;
+            touch-action: manipulation;
+            z-index: 20;
+            transition: 0.05s linear;
+            font-family: monospace;
+        }
+
+        .jump-btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 4px 0 #8b0000;
+        }
+
+        .scoreboard {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #000000bb;
+            backdrop-filter: blur(12px);
+            padding: 12px 22px;
+            border-radius: 60px;
+            font-weight: bold;
+            color: #ffd966;
+            font-size: 1.8rem;
+            font-family: monospace;
+            letter-spacing: 2px;
+            border: 1px solid #ffd966;
+            z-index: 15;
+        }
+
+        .restart-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: #2c3e66;
+            border: none;
+            color: white;
+            font-weight: bold;
+            padding: 10px 18px;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            box-shadow: 0 3px 0 #0f1a2e;
+            z-index: 20;
+            font-family: inherit;
+            touch-action: manipulation;
+        }
+
+        .controls-hint {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #000000aa;
+            color: #ffdd99;
+            padding: 5px 12px;
+            border-radius: 50px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            white-space: nowrap;
+            pointer-events: none;
+            backdrop-filter: blur(4px);
+            z-index: 15;
+        }
+
+        @media (max-width: 700px) {
+            .joy-area { width: 110px; height: 110px; bottom: 25px; left: 15px; }
+            .joystick-thumb { width: 45px; height: 45px; }
+            .jump-btn { width: 70px; height: 70px; bottom: 30px; right: 20px; font-size: 1.6rem; }
+            .scoreboard { font-size: 1.4rem; top: 12px; right: 12px; padding: 6px 16px; }
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <canvas id="gameCanvas" width="500" height="700"></canvas>
+</div>
+<div class="scoreboard" id="scoreDisplay">🏆 0</div>
+<button class="restart-btn" id="resetGameBtn">🔄 Restart</button>
+<button class="jump-btn" id="jumpButton">⬆️ HOPP</button>
+<div class="controls-hint">🕹️ Venstre joystick = gå | 🔴 Høyre knapp = HOPP</div>
+
+<div id="joyArea" class="joy-area">
+    <div class="joystick-base"></div>
+    <div id="joyThumb" class="joystick-thumb"></div>
+</div>
+
+<script>
+    (function() {
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Spill status
+        let gameRunning = true;
+        let score = 0;
+        let cameraX = 0;      // scrolling kamera (horisontalt)
+        
+        // ----- SPILLER -----
+        const PLAYER_WIDTH = 28;
+        const PLAYER_HEIGHT = 32;
+        let player = {
+            x: 150,          // world posisjon (ikke skjerm)
+            y: 0,
+            vx: 0,
+            vy: 0,
+            width: PLAYER_WIDTH,
+            height: PLAYER_HEIGHT,
+            grounded: false,
+            onPlatform: null
+        };
+        
+        // Tyngdekraft
+        const GRAVITY = 0.7;
+        const JUMP_POWER = -11;
+        
+        // ----- BYGNINGER / PLATTFORMER (parkour) -----
+        // Hver bygning: { x, y, width, height }
+        let buildings = [];
+        
+        function generateBuildings() {
+            buildings = [];
+            // Bakke-plan (bakkenivå)
+            buildings.push({ x: -200, y: 620, width: 2000, height: 20, type: 'ground' });
+            
+            // Bygninger i forskjellig høyde å hoppe på
+            const roofColors = ['#4a6fa5', '#6b4e3a', '#5c8a6e', '#9b6b43', '#3c5e7a'];
+            const starts = [100, 320, 550, 780, 1020, 1280, 1550, 1820, 2100];
+            const heights = [540, 490, 560, 510, 470, 530, 500, 550, 480];
+            const widths = [90, 110, 80, 100, 120, 95, 105, 88, 115];
+            
+            for(let i = 0; i < starts.length; i++) {
+                buildings.push({
+                    x: starts[i],
+                    y: heights[i],
+                    width: widths[i],
+                    height: 12,
+                    type: 'roof',
+                    color: roofColors[i % roofColors.length]
+                });
+                // Legg til bygningskropp under taket (visuelt)
+                buildings.push({
+                    x: starts[i] + 5,
+                    y: heights[i] + 12,
+                    width: widths[i] - 10,
+                    height: 620 - heights[i] - 12,
+                    type: 'buildingBody',
+                    color: '#3a2a2a'
+                });
+            }
+            
+            // ekstra høye bygg i slutten
+            buildings.push({ x: 2350, y: 480, width: 100, height: 14, type: 'roof', color: '#b5651e' });
+            buildings.push({ x: 2700, y: 440, width: 110, height: 14, type: 'roof', color: '#2c5f2d' });
+            buildings.push({ x: 3080, y: 510, width: 95, height: 14, type: 'roof', color: '#9e5a35' });
+            buildings.push({ x: 3450, y: 470, width: 120, height: 14, type: 'roof', color: '#6a4e9b' });
+        }
+        
+        // ----- JOYSTICK -----
+        const joyArea = document.getElementById('joyArea');
+        const joyThumb = document.getElementById('joyThumb');
+        let activeTouchId = null;
+        let joyX = 0;
+        let joyY = 0;
+        const joyRadius = 45;
+        let joyCenter = { x: 65, y: 65 };
+        
+        function updateJoyCenter() {
+            const rect = joyArea.getBoundingClientRect();
+            joyCenter.x = rect.width / 2;
+            joyCenter.y = rect.height / 2;
+        }
+        updateJoyCenter();
+        window.addEventListener('resize', () => updateJoyCenter());
+        
+        function setThumbPos(deltaX, deltaY) {
+            let dist = Math.hypot(deltaX, deltaY);
+            let limX = deltaX, limY = deltaY;
+            if(dist > joyRadius) {
+                limX = (deltaX / dist) * joyRadius;
+                limY = (deltaY / dist) * joyRadius;
+            }
+            joyThumb.style.transform = `translate(calc(-50% + ${limX}px), calc(-50% + ${limY}px))`;
+            joyX = limX / joyRadius;
+            joyY = limY / joyRadius;
+        }
+        
+        function resetJoystick() {
+            joyX = 0;
+            joyY = 0;
+            joyThumb.style.transform = `translate(-50%, -50%)`;
+            activeTouchId = null;
+        }
+        
+        joyArea.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if(activeTouchId !== null) return;
+            const touch = e.touches[0];
+            activeTouchId = touch.identifier;
+            const rect = joyArea.getBoundingClientRect();
+            const tx = touch.clientX - rect.left;
+            const ty = touch.clientY - rect.top;
+            setThumbPos(tx - joyCenter.x, ty - joyCenter.y);
+        });
+        
+        joyArea.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if(activeTouchId === null) return;
+            let found = null;
+            for(let t of e.touches) if(t.identifier === activeTouchId) { found = t; break; }
+            if(found) {
+                const rect = joyArea.getBoundingClientRect();
+                const tx = found.clientX - rect.left;
+                const ty = found.clientY - rect.top;
+                setThumbPos(tx - joyCenter.x, ty - joyCenter.y);
+            }
+        });
+        
+        joyArea.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            let still = false;
+            for(let t of e.touches) if(t.identifier === activeTouchId) still = true;
+            if(!still) resetJoystick();
+        });
+        joyArea.addEventListener('touchcancel', () => resetJoystick());
+        
+        // ----- HOPPEKNAPP (separat) -----
+        const jumpButton = document.getElementById('jumpButton');
+        
+        function performJump() {
+            if(!gameRunning) return;
+            // Sjekk om spilleren står på en plattform/bakke
+            if(player.grounded) {
+                player.vy = JUMP_POWER;
+                player.grounded = false;
+                if(navigator.vibrate) navigator.vibrate(40);
+            }
+        }
+        
+        jumpButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            performJump();
+        });
+        jumpButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            performJump();
+        });
+        
+        // ----- KOLLISJON OG OPPDATERING -----
+        function handleCollisionsAndMovement() {
+            // Horisontal bevegelse fra joystick (X-akse)
+            let move = joyX * 5.6;
+            player.vx = move;
+            player.x += player.vx;
+            
+            // horisontale grenser (world grenser)
+            if(player.x < 50) player.x = 50;
+            if(player.x > 3900) player.x = 3900;
+            
+            // Først vertikal fysikk
+            player.vy += GRAVITY;
+            player.y += player.vy;
+            
+            // Kollisjon med bygninger (plattformer)
+            player.grounded = false;
+            let collisionHappened = false;
+            
+            // Sorter bygninger (for å finne riktig plattform)
+            for(let b of buildings) {
+                // Skip body delen for kollisjon (bare tak / bakke)
+                if(b.type === 'buildingBody') continue;
+                
+                if(player.x + player.width > b.x && player.x < b.x + b.width) {
+                    // Vertikal kollisjon
+                    let playerBottom = player.y + player.height;
+                    let playerTop = player.y;
+                    let platformTop = b.y;
+                    
+                    if(player.vy >= 0 && playerBottom <= platformTop + 20 && playerBottom + player.vy >= platformTop) {
+                        // lander oppå plattformen
+                        player.y = platformTop - player.height;
+                        player.vy = 0;
+                        player.grounded = true;
+                        collisionHappened = true;
+                    }
+                    else if(player.vy < 0 && playerTop >= platformTop + b.height) {
+                        // Hode treffer i taket (unngå å hoppe gjennom)
+                        player.y = platformTop + b.height;
+                        player.vy = 0;
+                    }
+                }
+            }
+            
+            // Falle ut av verden? (respawn)
+            if(player.y > 700) {
+                if(gameRunning) gameRunning = false;
+            }
+            if(player.y < -50) player.y = -30;
+            
+            // Kamera følger spiller
+            let targetCam = player.x - canvas.width/2 + player.width/2;
+            targetCam = Math.min(Math.max(targetCam, 0), 3800 - canvas.width);
+            cameraX = targetCam;
+        }
+        
+        // Spawn poengsystem: hvor langt spilleren har kommet
+        function updateScore() {
+            if(gameRunning) {
+                let distanceProgress = (player.x - 100) / 35;
+                score = Math.max(score, Math.floor(distanceProgress));
+                if(score < 0) score = 0;
+                document.getElementById('scoreDisplay').innerHTML = `🏆 ${Math.floor(score)}`;
+            }
+        }
+        
+        // Hindring er fjernet - men fokus på parkour, så bygninger er nok.
+        // Bonus: Mister ikke liv ved fall, men game over på fall under bakke
+        
+        // Restart funksjon
+        function restartGame() {
+            gameRunning = true;
+            score = 0;
+            player.x = 150;
+            player.y = 500;
+            player.vx = 0;
+            player.vy = 0;
+            player.grounded = true;
+            cameraX = 0;
+            generateBuildings();  // regenrer bygg
+        }
+        
+        document.getElementById('resetGameBtn').addEventListener('click', () => restartGame());
+        document.getElementById('resetGameBtn').addEventListener('touchstart', (e) => { e.preventDefault(); restartGame(); });
+        
+        // ----- TEGNING (med kamera) -----
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Himmel / by bakgrunn
+            ctx.fillStyle = '#0f172f';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#2a3f5e';
+            for(let i=0; i<20; i++) {
+                ctx.fillRect((i*70 - cameraX*0.3) % canvas.width, canvas.height-180, 30, 120);
+            }
+            
+            // Tegn alle bygninger (relativt til kamera)
+            for(let b of buildings) {
+                let screenX = b.x - cameraX;
+                if(screenX + b.width < 0 || screenX > canvas.width) continue;
+                
+                if(b.type === 'roof') {
+                    ctx.fillStyle = b.color || '#b87c4f';
+                    ctx.fillRect(screenX, b.y, b.width, b.height);
+                    ctx.fillStyle = '#e5c28e';
+                    ctx.fillRect(screenX+5, b.y-6, b.width-10, 8);
+                } else if(b.type === 'buildingBody') {
+                    ctx.fillStyle = b.color || '#4f3b2c';
+                    ctx.fillRect(screenX, b.y, b.width, b.height);
+                    // vinduer
+                    ctx.fillStyle = '#ffd966aa';
+                    for(let w=0; w<3; w++) {
+                        ctx.fillRect(screenX+8+w*15, b.y+15, 8, 12);
+                    }
+                } else {
+                    ctx.fillStyle = '#5d6d53';
+                    ctx.fillRect(screenX, b.y, b.width, b.height);
+                }
+            }
+            
+            // Tegn spiller
+            let playerScreenX = player.x - cameraX;
+            ctx.shadowBlur = 6;
+            ctx.fillStyle = '#FFB347';
+            ctx.fillRect(playerScreenX, player.y, PLAYER_WIDTH, PLAYER_HEIGHT);
+            // hode/lue
+            ctx.fillStyle = '#E67E22';
+            ctx.fillRect(playerScreenX+4, player.y-8, 20, 10);
+            ctx.fillStyle = 'white';
+            ctx.fillRect(playerScreenX+18, player.y+8, 7, 7);
+            ctx.fillStyle = '#2c3e2f';
+            ctx.fillRect(playerScreenX+6, player.y+22, 16, 8);
+            // ryggsekk
+            ctx.fillStyle = '#c4450c';
+            ctx.fillRect(playerScreenX-6, player.y+12, 8, 14);
+            ctx.shadowBlur = 0;
+            
+            // Game over tekst
+            if(!gameRunning) {
+                ctx.font = 'bold 32px "Segoe UI"';
+                ctx.fillStyle = '#ffcc88';
+                ctx.shadowBlur = 4;
+                ctx.fillText('💀 FALL 💀', canvas.width/2-110, canvas.height/2-50);
+                ctx.font = '18px monospace';
+                ctx.fillStyle = '#ffdd99';
+                ctx.fillText('Trykk RESTART', canvas.width/2-65, canvas.height/2+30);
+            }
+            
+            // Ekstra instruksjon
+            ctx.font = 'bold 12px monospace';
+            ctx.fillStyle = '#ffdd99aa';
+            ctx.fillText('← Joystick | HOPP →', canvas.width-150, 35);
+        }
+        
+        // ----- GAMELOOP -----
+        function update() {
+            if(gameRunning) {
+                handleCollisionsAndMovement();
+                updateScore();
+            }
+        }
+        
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Initialiser
+        generateBuildings();
+        player.y = 540;  // start på første bygning
+        player.grounded = true;
+        gameLoop();
+    })();
+</script>
+</body>
+</html>
