@@ -213,7 +213,6 @@
             pointer-events: none;
         }
 
-        /* Shop GUI - vises KUN når man står på en lilla søyle */
         .shop-overlay {
             position: fixed;
             bottom: 200px;
@@ -243,11 +242,6 @@
 
         .shop-item:active {
             transform: scale(0.95);
-        }
-
-        .shop-item.disabled {
-            opacity: 0.5;
-            pointer-events: none;
         }
 
         @media (max-width: 700px) {
@@ -349,7 +343,7 @@
         // Evig generering
         let lastGeneratedX = 500;
         
-        // ----- TILFELDIG GENERASJON (evig) -----
+        // ----- TILFELDIG GENERASJON (evig) med FLERE coins! -----
         function generateMoreWorld() {
             let lastX = lastGeneratedX;
             for(let i = 0; i < 5; i++) {
@@ -377,12 +371,24 @@
                     color: '#3a2a2a'
                 });
                 
-                if(Math.random() > 0.55) {
+                // FLERE MYNTER! (60% sjanse i stedet for 55%)
+                if(Math.random() > 0.4) {
                     coinsList.push({
                         x: x + width/2 - 8,
                         y: y - 18,
                         width: 16,
                         height: 16,
+                        collected: false
+                    });
+                }
+                
+                // Ekstra mynt i luften over taket
+                if(Math.random() > 0.65) {
+                    coinsList.push({
+                        x: x + width/2 - 6,
+                        y: y - 38,
+                        width: 12,
+                        height: 12,
                         collected: false
                     });
                 }
@@ -423,8 +429,14 @@
                 buildings.push({ x: x, y: y, width: width, height: 12, type: 'roof', color: `hsl(${30 + Math.random() * 40}, 55%, 48%)` });
                 buildings.push({ x: x + 5, y: y + 12, width: width - 10, height: 620 - y - 12, type: 'buildingBody', color: '#3a2a2a' });
                 
-                if(Math.random() > 0.55) {
+                // FLERE MYNTER! (60% sjanse)
+                if(Math.random() > 0.4) {
                     coinsList.push({ x: x + width/2 - 8, y: y - 18, width: 16, height: 16, collected: false });
+                }
+                
+                // Ekstra mynt over taket
+                if(Math.random() > 0.65) {
+                    coinsList.push({ x: x + width/2 - 6, y: y - 38, width: 12, height: 12, collected: false });
                 }
                 
                 if(Math.random() < 0.08 && shops.length < 2) {
@@ -433,6 +445,18 @@
                 
                 lastX = x + width;
             }
+            
+            // Ekstra flytende mynter i luften (flere!)
+            for(let i = 0; i < 35; i++) {
+                coinsList.push({
+                    x: 150 + Math.random() * 4000,
+                    y: 420 + Math.random() * 180,
+                    width: 12,
+                    height: 12,
+                    collected: false
+                });
+            }
+            
             lastGeneratedX = lastX;
         }
         
@@ -960,7 +984,6 @@
                 ctx.fillStyle = '#ffd700';
                 ctx.font = '20px monospace';
                 ctx.fillText('🏪', screenX+8, s.y+28);
-                // Glow effekt
                 ctx.shadowBlur = 10;
                 ctx.shadowColor = '#9b59b6';
                 ctx.fillStyle = '#ddaaff';
