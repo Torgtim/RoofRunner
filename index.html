@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Parkour PRIME PRIME - Fiender gir coins!</title>
+    <title>Parkour PRIME PRIME - Skytefiender gir 20 coins!</title>
     <style>
         * {
             user-select: none;
@@ -477,9 +477,9 @@
             }
         }
         
-        // Skyte-fiender (ved 300+ poeng)
+        // Skyte-fiender (ved 300+ poeng) - de skyter nå skikkelig!
         function spawnShootingEnemy() {
-            if(score >= 300 && enemies.filter(e => e.type === 'shooter').length < 3 && Math.random() < 0.01) {
+            if(score >= 300 && enemies.filter(e => e.type === 'shooter').length < 3 && Math.random() < 0.012) {
                 let spawnX = player.x + 450 + Math.random() * 300;
                 let targetY = 550;
                 for(let b of buildings) {
@@ -503,17 +503,19 @@
             for(let e of enemies) {
                 if(e.type === 'shooter') {
                     e.shootTimer = (e.shootTimer || 0) + 1;
-                    if(e.shootTimer > 60) {
+                    // Skyter oftere (hvert 45. frame i stedet for 60)
+                    if(e.shootTimer > 45) {
                         e.shootTimer = 0;
                         let dx = player.x - e.x;
                         let dy = player.y - e.y;
                         let len = Math.hypot(dx, dy);
-                        if(len < 500) {
+                        // Økt rekkevidde til 600
+                        if(len < 600) {
                             bullets.push({
                                 x: e.x + 15,
                                 y: e.y + 15,
-                                vx: (dx / len) * 5,
-                                vy: (dy / len) * 5,
+                                vx: (dx / len) * 6,
+                                vy: (dy / len) * 6,
                                 radius: 5
                             });
                         }
@@ -844,16 +846,18 @@
                 }
             }
             
-            // Fiender - DREP GIR +10 COINS
+            // Fiender - DREP GIR MYNTER (vanlige: 10, skytefiender: 20)
             for(let i = 0; i < enemies.length; i++) {
                 let e = enemies[i];
                 if(player.x < e.x + e.width && player.x + player.width > e.x &&
                    player.y < e.y + e.height && player.y + player.height > e.y) {
                     if(player.vy > 0 && player.y + player.height - e.y < 18) {
+                        // Forskjellige mynter basert på type
+                        let coinReward = (e.type === 'shooter') ? 20 : 10;
                         enemies.splice(i,1);
                         player.vy = -9;
                         score += 15;
-                        coins += 10;   // +10 coins for å drepe fiende!
+                        coins += coinReward;
                         if(navigator.vibrate) navigator.vibrate(50);
                         document.getElementById('coinValue').innerText = coins;
                         i--;
